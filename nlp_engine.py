@@ -6,8 +6,6 @@ from sklearn.metrics.pairwise import cosine_similarity
 nltk.download('stopwords', quiet=True)
 import sys # Import sys to exit if model not found
 
-nltk.download('stopwords', quiet=True)
-
 try:
     nlp = spacy.load("en_core_web_sm")
 except OSError:
