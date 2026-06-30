@@ -25,28 +25,51 @@ def preprocess_text(text):
 def extract_skills(text):
     """
     Extract skills/keywords from text using KeyBERT.
-    KeyBERT uses BERT transformer embeddings to find the most
-    relevant keywords — proper NLP, not a lookup table.
     Returns a set of skill strings.
     """
     try:
-        # Extract top 20 keywords/phrases
-        # keyphrase_ngram_range=(1,2) catches both single words
-        # and two-word phrases like "machine learning", "REST API"
         keywords = kw_model.extract_keywords(
             text,
             keyphrase_ngram_range=(1, 2),
             stop_words='english',
             top_n=20,
-            use_mmr=True,       # MMR reduces redundant keywords
-            diversity=0.5       # Balance between relevance and diversity
+            use_mmr=True,
+            diversity=0.5
         )
-        # keywords returns list of (keyword, score) tuples
         skills = set(kw.lower().strip() for kw, score in keywords)
         return skills
-
     except Exception:
         return set()
+
+
+def get_skill_match(jd_skills, resume_raw_text):
+    """
+    For single-word skills: check if the word exists in resume.
+    For multi-word phrases (bigrams like 'python java'):
+    check if ALL individual words exist in resume — since KeyBERT
+    joins related words as phrases but they appear separately in text.
+    """
+    resume_lower = resume_raw_text.lower()
+    matched = set()
+    missing = set()
+
+    for skill in jd_skills:
+        words = skill.lower().split()
+
+        if len(words) == 1:
+            # e.g. "python" → check directly
+            if skill.lower() in resume_lower:
+                matched.add(skill)
+            else:
+                missing.add(skill)
+        else:
+            # e.g. "python java" → check if "python" AND "java" both exist
+            if all(word in resume_lower for word in words):
+                matched.add(skill)
+            else:
+                missing.add(skill)
+
+    return matched, missing
 
 
 def rank_resumes(job_description, resumes: dict):
@@ -56,7 +79,7 @@ def rank_resumes(job_description, resumes: dict):
     returns: list of (filename, tfidf_score, matched_skills, missing_skills)
     sorted by tfidf_score descending
     """
-    # Extract skills from JD using KeyBERT (transformer-based)
+    # Extract skills ONLY from JD
     jd_skills = extract_skills(job_description)
 
     # Preprocess text for TF-IDF scoring
@@ -76,18 +99,16 @@ def rank_resumes(job_description, resumes: dict):
     resume_vectors = tfidf_matrix[1:]
     scores = cosine_similarity(jd_vector, resume_vectors)[0]
 
-    # Build results with skill gap analysis
+    # Build results — match JD skills against raw resume text
     results = []
     for i, filename in enumerate(filenames):
-        resume_skills = extract_skills(resumes[filename])
-        matched_skills = jd_skills & resume_skills
-        missing_skills = jd_skills - resume_skills
+        matched, missing = get_skill_match(jd_skills, resumes[filename])
 
         results.append((
             filename,
             scores[i],
-            matched_skills,
-            missing_skills
+            matched,
+            missing
         ))
 
     results.sort(key=lambda x: x[1], reverse=True)
