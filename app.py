@@ -38,14 +38,6 @@ st.markdown("""
         font-size: 1.1rem;
         margin-top: 0.5rem;
     }
-    .section-card {
-        background: white;
-        border-radius: 12px;
-        padding: 1.8rem;
-        box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-        margin-bottom: 1.5rem;
-        border: 1px solid #e9ecef;
-    }
     .section-title {
         font-size: 1.1rem;
         font-weight: 600;
@@ -72,9 +64,6 @@ st.markdown("""
         opacity: 0.85;
         margin: 0;
     }
-    .rank-1 { background: linear-gradient(135deg, #f6d365 0%, #fda085 100%); }
-    .rank-2 { background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); color: #333 !important; }
-    .rank-3 { background: linear-gradient(135deg, #d4fc79 0%, #96e6a1 100%); color: #333 !important; }
     .result-row {
         display: flex;
         align-items: center;
@@ -189,21 +178,21 @@ if screen_btn:
 
                 with m1:
                     st.markdown(f"""
-                        <div class="metric-card rank-1">
+                        <div class="metric-card">
                             <h3>{len(results)}</h3>
                             <p>Resumes Screened</p>
                         </div>
                     """, unsafe_allow_html=True)
                 with m2:
                     st.markdown(f"""
-                        <div class="metric-card rank-1">
+                        <div class="metric-card">
                             <h3>{top_score:.1f}%</h3>
                             <p>Top Match Score</p>
                         </div>
                     """, unsafe_allow_html=True)
                 with m3:
                     st.markdown(f"""
-                        <div class="metric-card rank-1">
+                        <div class="metric-card">
                             <h3>{avg_score:.1f}%</h3>
                             <p>Average Match Score</p>
                         </div>
@@ -211,12 +200,16 @@ if screen_btn:
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
-                # Results table
+                # Results
                 medals = ["🥇", "🥈", "🥉"]
-                for i, (name, score) in enumerate(results):
+
+                for i, (name, score, matched, missing) in enumerate(results):
                     pct = score * 100
                     medal = medals[i] if i < 3 else f"#{i+1}"
                     bar_color = "#667eea" if i == 0 else "#a0aec0"
+                    skill_pct = (len(matched) / (len(matched) + len(missing)) * 100) if (matched or missing) else 0
+
+                    # Main result row
                     st.markdown(f"""
                         <div class="result-row">
                             <div style="font-size:1.5rem; width:50px">{medal}</div>
@@ -225,7 +218,36 @@ if screen_btn:
                                 <div style="background:#e2e8f0; border-radius:999px; height:8px; margin-top:6px">
                                     <div style="background:{bar_color}; width:{pct:.1f}%; height:8px; border-radius:999px"></div>
                                 </div>
+                                <div style="font-size:0.78rem; color:#718096; margin-top:4px">
+                                    Skill Match: {skill_pct:.0f}% &nbsp;|&nbsp; {len(matched)} matched &nbsp;|&nbsp; {len(missing)} missing
+                                </div>
                             </div>
                             <div style="margin-left:1rem; font-size:1.2rem; font-weight:700; color:#667eea; min-width:60px; text-align:right">{pct:.1f}%</div>
                         </div>
                     """, unsafe_allow_html=True)
+
+                    # Expandable skill details
+                    with st.expander(f"👁 View Skill Details — {name}"):
+                        sc1, sc2 = st.columns(2)
+
+                        with sc1:
+                            st.markdown("**✅ Matched Skills**")
+                            if matched:
+                                skills_html = "".join([
+                                    f'<span style="display:inline-block; background:#d4edda; color:#155724; border-radius:20px; padding:3px 10px; font-size:0.78rem; font-weight:500; margin:3px">{s}</span>'
+                                    for s in sorted(matched)
+                                ])
+                                st.markdown(skills_html, unsafe_allow_html=True)
+                            else:
+                                st.markdown("_No skills matched_")
+
+                        with sc2:
+                            st.markdown("**❌ Missing Skills**")
+                            if missing:
+                                skills_html = "".join([
+                                    f'<span style="display:inline-block; background:#f8d7da; color:#721c24; border-radius:20px; padding:3px 10px; font-size:0.78rem; font-weight:500; margin:3px">{s}</span>'
+                                    for s in sorted(missing)
+                                ])
+                                st.markdown(skills_html, unsafe_allow_html=True)
+                            else:
+                                st.markdown("_No skills missing — great match!_")
