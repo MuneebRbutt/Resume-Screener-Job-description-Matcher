@@ -1,5 +1,8 @@
 import streamlit as st
 import pandas as pd
+import plotly.graph_objects as go
+import plotly.express as px
+from collections import Counter
 from resume_parser import extract_text_from_pdf
 from nlp_engine import rank_resumes
 
@@ -118,10 +121,144 @@ if screen_btn:
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
+                # ── FEATURE 5: ANALYTICS DASHBOARD ────────────────────────────
+                st.markdown("## 📈 Analytics Dashboard")
+
+                dash_col1, dash_col2 = st.columns(2, gap="large")
+
+                # ── Chart 1: Score Distribution Bar Chart ──
+                with dash_col1:
+                    st.markdown("**🏅 Candidate Score Distribution**")
+
+                    names  = [r[0].replace(".pdf", "") for r in results]
+                    scores = [round(r[1] * 100, 1) for r in results]
+
+                    # Color: top candidate purple, rest grey
+                    bar_colors = ["#667eea" if i == 0 else "#a0aec0" for i in range(len(names))]
+
+                    fig_scores = go.Figure(go.Bar(
+                        x=names,
+                        y=scores,
+                        marker_color=bar_colors,
+                        text=[f"{s}%" for s in scores],
+                        textposition="outside",
+                        hovertemplate="<b>%{x}</b><br>Score: %{y}%<extra></extra>",
+                    ))
+                    fig_scores.update_layout(
+                        yaxis=dict(range=[0, 110], title="Match Score (%)", gridcolor="#e2e8f0"),
+                        xaxis=dict(title=""),
+                        plot_bgcolor="white",
+                        paper_bgcolor="white",
+                        font=dict(family="sans-serif", size=12, color="#2d3748"),
+                        margin=dict(t=20, b=40, l=40, r=20),
+                        height=320,
+                        showlegend=False,
+                    )
+                    st.plotly_chart(fig_scores, use_container_width=True)
+
+                # ── Chart 2: Most Common Missing Skills ──
+                with dash_col2:
+                    st.markdown("**❌ Most Commonly Missing Skills Across All Resumes**")
+
+                    # Count how many resumes are missing each skill
+                    all_missing = []
+                    for r in results:
+                        all_missing.extend(list(r[3]))   # r[3] = missing set
+
+                    skill_counts = Counter(all_missing).most_common(10)
+
+                    if skill_counts:
+                        skills_list  = [s for s, _ in skill_counts]
+                        counts_list  = [c for _, c in skill_counts]
+
+                        # Color gradient: more missing = more red
+                        max_c = max(counts_list)
+                        bar_colors_missing = [
+                            f"rgba(229, 62, 62, {0.4 + 0.6 * (c / max_c):.2f})"
+                            for c in counts_list
+                        ]
+
+                        fig_missing = go.Figure(go.Bar(
+                            x=counts_list[::-1],
+                            y=skills_list[::-1],
+                            orientation="h",
+                            marker_color=bar_colors_missing[::-1],
+                            text=[f"{c} resume{'s' if c > 1 else ''}" for c in counts_list[::-1]],
+                            textposition="outside",
+                            hovertemplate="<b>%{y}</b><br>Missing in %{x} resume(s)<extra></extra>",
+                        ))
+                        fig_missing.update_layout(
+                            xaxis=dict(
+                                title="Number of Resumes Missing This Skill",
+                                gridcolor="#e2e8f0",
+                                range=[0, max_c + 1],
+                                dtick=1,
+                            ),
+                            yaxis=dict(title=""),
+                            plot_bgcolor="white",
+                            paper_bgcolor="white",
+                            font=dict(family="sans-serif", size=11, color="#2d3748"),
+                            margin=dict(t=20, b=40, l=20, r=60),
+                            height=320,
+                            showlegend=False,
+                        )
+                        st.plotly_chart(fig_missing, use_container_width=True)
+                    else:
+                        st.info("No missing skills detected across resumes.")
+
+                # ── Chart 3: Skill Match Rate per Candidate ──
+                st.markdown("**🎯 Skill Match Rate per Candidate**")
+
+                match_names  = [r[0].replace(".pdf", "") for r in results]
+                match_pcts   = []
+                missing_pcts = []
+
+                for r in results:
+                    matched_n = len(r[2])
+                    missing_n = len(r[3])
+                    total     = matched_n + missing_n
+                    match_pcts.append(round(matched_n / total * 100, 1) if total else 0)
+                    missing_pcts.append(round(missing_n / total * 100, 1) if total else 0)
+
+                fig_stacked = go.Figure()
+                fig_stacked.add_trace(go.Bar(
+                    name="✅ Matched",
+                    x=match_names,
+                    y=match_pcts,
+                    marker_color="#48bb78",
+                    text=[f"{v}%" for v in match_pcts],
+                    textposition="inside",
+                    hovertemplate="<b>%{x}</b><br>Matched: %{y}%<extra></extra>",
+                ))
+                fig_stacked.add_trace(go.Bar(
+                    name="❌ Missing",
+                    x=match_names,
+                    y=missing_pcts,
+                    marker_color="#fc8181",
+                    text=[f"{v}%" for v in missing_pcts],
+                    textposition="inside",
+                    hovertemplate="<b>%{x}</b><br>Missing: %{y}%<extra></extra>",
+                ))
+                fig_stacked.update_layout(
+                    barmode="stack",
+                    yaxis=dict(title="Skill Coverage (%)", gridcolor="#e2e8f0", range=[0, 110]),
+                    xaxis=dict(title=""),
+                    plot_bgcolor="white",
+                    paper_bgcolor="white",
+                    font=dict(family="sans-serif", size=12, color="#2d3748"),
+                    margin=dict(t=10, b=40, l=40, r=20),
+                    height=300,
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                )
+                st.plotly_chart(fig_stacked, use_container_width=True)
+
+                st.markdown("---")
+                st.markdown("## 🏆 Detailed Results")
+
                 medals = ["🥇", "🥈", "🥉"]
 
-                # ✅ Now unpacks 5 values including section_scores
-                for i, (name, score, matched, missing, section_scores) in enumerate(results):
+                # ✅ Now unpacks 7 values including boosters and draggers
+                for i, (name, score, matched, missing, section_scores, boosters, draggers) in enumerate(results):
                     pct = score * 100
                     medal = medals[i] if i < 3 else f"#{i+1}"
                     bar_color = "#667eea" if i == 0 else "#a0aec0"
@@ -145,7 +282,49 @@ if screen_btn:
 
                     with st.expander(f"👁 View Skill Details — {name}"):
 
-                        # --- SECTION BREAKDOWN (new feature) ---
+                        # ── FEATURE 4: SCORE EXPLANATION ──────────────────────────
+                        if boosters or draggers:
+                            st.markdown("**🔍 Why This Resume Scored This Way**")
+                            st.caption("Each keyword from the resume was compared to the job description individually. High similarity = helped the score. Low similarity = noise that dragged the score down.")
+
+                            exp1, exp2 = st.columns(2)
+
+                            with exp1:
+                                st.markdown("**🚀 Score Boosters** *(keywords that helped)*")
+                                for keyword, sim in boosters:
+                                    bar_w = min(int(sim), 100)
+                                    color = "#38a169" if sim >= 60 else "#d69e2e"
+                                    st.markdown(f"""
+                                        <div style="margin-bottom:7px">
+                                            <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:#2d3748; margin-bottom:2px">
+                                                <span>🟢 {keyword}</span>
+                                                <span style="color:{color}; font-weight:600">{sim:.0f}%</span>
+                                            </div>
+                                            <div style="background:#e2e8f0; border-radius:999px; height:5px">
+                                                <div style="background:{color}; width:{bar_w}%; height:5px; border-radius:999px"></div>
+                                            </div>
+                                        </div>
+                                    """, unsafe_allow_html=True)
+
+                            with exp2:
+                                st.markdown("**🧹 Score Draggers** *(noise — unrelated to JD)*")
+                                for keyword, sim in draggers:
+                                    bar_w = min(int(sim), 100)
+                                    st.markdown(f"""
+                                        <div style="margin-bottom:7px">
+                                            <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:#2d3748; margin-bottom:2px">
+                                                <span>🔴 {keyword}</span>
+                                                <span style="color:#e53e3e; font-weight:600">{sim:.0f}%</span>
+                                            </div>
+                                            <div style="background:#e2e8f0; border-radius:999px; height:5px">
+                                                <div style="background:#fc8181; width:{bar_w}%; height:5px; border-radius:999px"></div>
+                                            </div>
+                                        </div>
+                                    """, unsafe_allow_html=True)
+
+                            st.markdown("<br>", unsafe_allow_html=True)
+
+                        # ── SECTION BREAKDOWN ──────────────────────────────────────
                         if section_scores:
                             st.markdown("**📊 Section Breakdown** *(how each part of the resume scored)*")
                             section_labels = {
@@ -172,8 +351,9 @@ if screen_btn:
 
                             st.markdown("<br>", unsafe_allow_html=True)
 
-                        # --- MATCHED / MISSING SKILLS ---
+                        # ── MATCHED / MISSING SKILLS ───────────────────────────────
                         sc1, sc2 = st.columns(2)
+
                         with sc1:
                             st.markdown("**✅ Matched Skills**")
                             if matched:
