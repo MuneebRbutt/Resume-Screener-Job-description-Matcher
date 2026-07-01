@@ -75,7 +75,7 @@ Three interactive charts built with Plotly:
 | Semantic Similarity | `sentence-transformers` — `all-MiniLM-L6-v2` |
 | Keyword Extraction | KeyBERT |
 | NLP / Tokenization | spaCy (`en_core_web_sm`) |
-| PDF Parsing | PyMuPDF (fitz) |
+| PDF Parsing | pdfplumber |
 | Data Handling | Pandas |
 | Visualisation | Plotly |
 | PDF Export | fpdf2 |
@@ -107,7 +107,7 @@ User uploads JD + PDF resumes
         │
         ▼
 resume_parser.py
-  └── Extracts raw text from each PDF using PyMuPDF
+  └── Extracts raw text from each PDF using pdfplumber
         │
         ▼
 section_parser.py
@@ -183,7 +183,7 @@ scikit-learn
 sentence-transformers
 keybert
 fpdf2
-PyMuPDF
+pdfplumber
 https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
 ```
 
