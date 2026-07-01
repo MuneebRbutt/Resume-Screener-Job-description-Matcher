@@ -120,8 +120,8 @@ if screen_btn:
 
                 medals = ["🥇", "🥈", "🥉"]
 
-                # ✅ Now unpacks 5 values including section_scores
-                for i, (name, score, matched, missing, section_scores) in enumerate(results):
+                # ✅ Now unpacks 7 values including boosters and draggers
+                for i, (name, score, matched, missing, section_scores, boosters, draggers) in enumerate(results):
                     pct = score * 100
                     medal = medals[i] if i < 3 else f"#{i+1}"
                     bar_color = "#667eea" if i == 0 else "#a0aec0"
@@ -145,7 +145,49 @@ if screen_btn:
 
                     with st.expander(f"👁 View Skill Details — {name}"):
 
-                        # --- SECTION BREAKDOWN (new feature) ---
+                        # ── FEATURE 4: SCORE EXPLANATION ──────────────────────────
+                        if boosters or draggers:
+                            st.markdown("**🔍 Why This Resume Scored This Way**")
+                            st.caption("Each keyword from the resume was compared to the job description individually. High similarity = helped the score. Low similarity = noise that dragged the score down.")
+
+                            exp1, exp2 = st.columns(2)
+
+                            with exp1:
+                                st.markdown("**🚀 Score Boosters** *(keywords that helped)*")
+                                for keyword, sim in boosters:
+                                    bar_w = min(int(sim), 100)
+                                    color = "#38a169" if sim >= 60 else "#d69e2e"
+                                    st.markdown(f"""
+                                        <div style="margin-bottom:7px">
+                                            <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:#2d3748; margin-bottom:2px">
+                                                <span>🟢 {keyword}</span>
+                                                <span style="color:{color}; font-weight:600">{sim:.0f}%</span>
+                                            </div>
+                                            <div style="background:#e2e8f0; border-radius:999px; height:5px">
+                                                <div style="background:{color}; width:{bar_w}%; height:5px; border-radius:999px"></div>
+                                            </div>
+                                        </div>
+                                    """, unsafe_allow_html=True)
+
+                            with exp2:
+                                st.markdown("**🧹 Score Draggers** *(noise — unrelated to JD)*")
+                                for keyword, sim in draggers:
+                                    bar_w = min(int(sim), 100)
+                                    st.markdown(f"""
+                                        <div style="margin-bottom:7px">
+                                            <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:#2d3748; margin-bottom:2px">
+                                                <span>🔴 {keyword}</span>
+                                                <span style="color:#e53e3e; font-weight:600">{sim:.0f}%</span>
+                                            </div>
+                                            <div style="background:#e2e8f0; border-radius:999px; height:5px">
+                                                <div style="background:#fc8181; width:{bar_w}%; height:5px; border-radius:999px"></div>
+                                            </div>
+                                        </div>
+                                    """, unsafe_allow_html=True)
+
+                            st.markdown("<br>", unsafe_allow_html=True)
+
+                        # ── SECTION BREAKDOWN ──────────────────────────────────────
                         if section_scores:
                             st.markdown("**📊 Section Breakdown** *(how each part of the resume scored)*")
                             section_labels = {
@@ -172,8 +214,9 @@ if screen_btn:
 
                             st.markdown("<br>", unsafe_allow_html=True)
 
-                        # --- MATCHED / MISSING SKILLS ---
+                        # ── MATCHED / MISSING SKILLS ───────────────────────────────
                         sc1, sc2 = st.columns(2)
+
                         with sc1:
                             st.markdown("**✅ Matched Skills**")
                             if matched:

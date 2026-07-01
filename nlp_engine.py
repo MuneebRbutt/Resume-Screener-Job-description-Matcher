@@ -29,10 +29,7 @@ def extract_skills(text):
 
 
 def get_skill_match(jd_skills, resume_raw_text):
-    """
-    Check which JD skills appear in the resume text.
-    For multi-word phrases like 'python java', checks each word individually.
-    """
+    """Check which JD skills appear in the resume text."""
     resume_lower = resume_raw_text.lower()
     matched = set()
     missing = set()
@@ -53,21 +50,68 @@ def get_skill_match(jd_skills, resume_raw_text):
     return matched, missing
 
 
-def compute_weighted_score(job_description, sections):
+def explain_score(resume_text, jd_embedding, top_n=5):
     """
-    Encodes JD and each resume section separately using sentence transformers.
-    Computes cosine similarity per section, then returns a weighted final score.
+    SHAP-inspired keyword attribution.
 
-    This is what separates this from basic TF-IDF ATS systems — section-aware
-    semantic scoring means a skill in the Skills section counts more than the
-    same word appearing in the Objective statement.
+    For each keyword extracted from the resume:
+      - Encode it into a vector
+      - Measure its cosine similarity to the JD
+      - High similarity  → this keyword HELPED the score (booster)
+      - Low similarity   → this keyword HURT the score (dragger/noise)
 
     Returns:
-        final_score   (float) — weighted combined similarity
-        section_scores (dict) — { section_name: similarity_score }
+        boosters : list of (keyword, similarity%) — top contributors
+        draggers : list of (keyword, similarity%) — noise keywords
     """
-    jd_embedding = embedding_model.encode(job_description, convert_to_tensor=True)
+    try:
+        keywords = kw_model.extract_keywords(
+            resume_text,
+            keyphrase_ngram_range=(1, 2),
+            stop_words='english',
+            top_n=30,          # extract more so we have enough to split
+            use_mmr=True,
+            diversity=0.6
+        )
+    except Exception:
+        return [], []
 
+    if not keywords:
+        return [], []
+
+    keyword_texts = [kw for kw, _ in keywords]
+
+    # Encode all keywords in one batch (fast)
+    keyword_embeddings = embedding_model.encode(
+        keyword_texts,
+        convert_to_tensor=True
+    )
+
+    # Compare each keyword vector to the JD vector
+    similarities = util.cos_sim(jd_embedding, keyword_embeddings)[0]
+
+    # Build scored list
+    scored = [
+        (keyword_texts[i], float(similarities[i]) * 100)
+        for i in range(len(keyword_texts))
+    ]
+    scored.sort(key=lambda x: x[1], reverse=True)
+
+    # Top N = boosters (helped the score)
+    boosters = scored[:top_n]
+
+    # Bottom N = draggers (noise that didn't relate to JD)
+    draggers = scored[-(top_n):]
+    draggers.reverse()  # worst first
+
+    return boosters, draggers
+
+
+def compute_weighted_score(job_description, sections, jd_embedding):
+    """
+    Encodes each resume section separately, computes weighted similarity.
+    Returns final_score and per-section scores.
+    """
     section_scores = {}
     total_score = 0.0
     total_weight = 0.0
@@ -83,11 +127,10 @@ def compute_weighted_score(job_description, sections):
         section_embedding = embedding_model.encode(content, convert_to_tensor=True)
         similarity = float(util.cos_sim(jd_embedding, section_embedding)[0][0])
 
-        section_scores[section_name] = round(similarity * 100, 1)  # store as %
+        section_scores[section_name] = round(similarity * 100, 1)
         total_score += similarity * weight
         total_weight += weight
 
-    # Normalize in case some sections are missing from the resume
     final_score = (total_score / total_weight) if total_weight > 0 else 0.0
     return final_score, section_scores
 
@@ -95,28 +138,44 @@ def compute_weighted_score(job_description, sections):
 def rank_resumes(job_description, resumes: dict):
     """
     Main ranking function.
-    Returns list of (filename, score, matched_skills, missing_skills, section_scores)
+    Returns list of:
+    (filename, score, matched_skills, missing_skills, section_scores, boosters, draggers)
     sorted by score descending.
     """
     jd_skills = extract_skills(job_description)
 
+    # Encode JD once — reused for all resumes
+    jd_embedding = embedding_model.encode(job_description, convert_to_tensor=True)
+
     results = []
 
     for filename, raw_text in resumes.items():
+
         # Step 1 — Parse resume into sections
         sections = parse_sections(raw_text)
-
-        # Step 2 — Fallback: if no sections detected treat whole text as experience
         if not sections or all(k == 'unknown' for k in sections):
             sections = {'experience': raw_text}
 
-        # Step 3 — Weighted section scoring
-        score, section_scores = compute_weighted_score(job_description, sections)
+        # Step 2 — Weighted section scoring
+        score, section_scores = compute_weighted_score(
+            job_description, sections, jd_embedding
+        )
 
-        # Step 4 — Skill gap analysis on full raw text
+        # Step 3 — Skill gap analysis
         matched, missing = get_skill_match(jd_skills, raw_text)
 
-        results.append((filename, score, matched, missing, section_scores))
+        # Step 4 — Score explanation (new)
+        boosters, draggers = explain_score(raw_text, jd_embedding)
+
+        results.append((
+            filename,
+            score,
+            matched,
+            missing,
+            section_scores,
+            boosters,    # ← new
+            draggers     # ← new
+        ))
 
     results.sort(key=lambda x: x[1], reverse=True)
     return results
