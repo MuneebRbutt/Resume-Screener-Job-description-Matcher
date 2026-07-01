@@ -220,6 +220,15 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
+with st.expander("⚙️ How the score is calculated"):
+    st.markdown("""
+1. **Parse** — extract text from each PDF, split it into sections (Skills, Experience, Education, Projects, Certifications).
+2. **Extract JD skills** — KeyBERT pulls the top keyphrases out of the job description.
+3. **Embed** — the JD and each resume section are encoded into vectors with a Sentence-Transformer (`all-MiniLM-L6-v2`).
+4. **Weighted score** — cosine similarity per section, combined using fixed weights: Skills 45% · Experience 35% · Projects 10% · Education 8% · Certifications 2%.
+5. **Explain** — every resume keyword is compared to the JD individually to surface the top "boosters" and "draggers" behind the score.
+    """)
+
 
 # ── HELPER FUNCTIONS ───────────────────────────────────────────────────
 def score_color(pct):
