@@ -207,7 +207,7 @@ with st.sidebar:
     st.markdown("""
         <div style="margin-top:2rem; padding-top:1.5rem; border-top:1px solid rgba(255,255,255,0.1);
                     font-size:0.75rem; opacity:0.5; text-align:center; line-height:1.6;">
-            Built with KeyBERT · TF-IDF<br>spaCy · Streamlit
+            Built with KeyBERT · Sentence Transformers<br>spaCy · Streamlit
         </div>
     """, unsafe_allow_html=True)
 
@@ -229,6 +229,38 @@ def score_color(pct):
         return "#744210", "#fefcbf", "🟡 Partial Match"
     else:
         return "#742a2a", "#fed7d7", "🔴 Weak Match"
+
+
+def sanitize(text):
+    """
+    Replace special Unicode characters that Helvetica (fpdf2) cannot encode.
+    Covers bullets, dashes, curly quotes, arrows, and any non-latin-1 character.
+    This prevents FPDFUnicodeEncodingException when resumes contain
+    special formatting characters.
+    """
+    replacements = {
+        '\u2022': '-',    # bullet •
+        '\u2023': '-',    # triangle bullet ‣
+        '\u25aa': '-',    # small square ▪
+        '\u25cf': '-',    # circle ●
+        '\u2013': '-',    # en dash –
+        '\u2014': '-',    # em dash —
+        '\u2018': "'",    # left single quote '
+        '\u2019': "'",    # right single quote '
+        '\u201c': '"',    # left double quote "
+        '\u201d': '"',    # right double quote "
+        '\u2026': '...', # ellipsis …
+        '\u2192': '->',  # arrow →
+        '\u2713': 'v',   # checkmark ✓
+        '\u00e9': 'e',   # é
+        '\u00e0': 'a',   # à
+        '\u00fc': 'u',   # ü
+        '\u00f6': 'o',   # ö
+    }
+    for char, replacement in replacements.items():
+        text = text.replace(char, replacement)
+    # Final safety net — silently drop anything still outside latin-1
+    return text.encode('latin-1', errors='ignore').decode('latin-1')
 
 
 def build_csv(results):
@@ -254,53 +286,88 @@ def build_csv(results):
 
 
 def build_pdf(results, job_description):
-    pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.add_page()
-    pdf.set_font("Helvetica", "B", 20)
-    pdf.set_text_color(102, 126, 234)
-    pdf.cell(0, 12, "Resume Screener Report", ln=True, align="C")
-    pdf.set_font("Helvetica", "", 9)
-    pdf.set_text_color(120, 120, 120)
-    pdf.cell(0, 6, f"Generated: {datetime.now().strftime('%B %d, %Y  %H:%M')}", ln=True, align="C")
-    pdf.ln(4)
-    pdf.set_font("Helvetica", "B", 11)
-    pdf.set_text_color(45, 55, 72)
-    pdf.cell(0, 8, "Job Description (preview)", ln=True)
-    pdf.set_font("Helvetica", "", 9)
-    pdf.set_text_color(80, 80, 80)
-    snippet = job_description[:300].replace("\n", " ") + ("..." if len(job_description) > 300 else "")
-    pdf.multi_cell(0, 5, snippet)
-    pdf.ln(4)
-    pdf.set_draw_color(200, 200, 200)
-    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-    pdf.ln(4)
-    for i, (name, score, matched, missing, section_scores, boosters, draggers) in enumerate(results):
-        pct = round(score * 100, 1)
-        skill_pct = round(len(matched) / (len(matched) + len(missing)) * 100, 1) if (matched or missing) else 0
-        pdf.set_font("Helvetica", "B", 13)
+    """
+    Build PDF report. Returns (pdf_bytes, None) on success
+    or (None, error_message) on failure so the UI can handle
+    it gracefully instead of crashing with a red error screen.
+    """
+    try:
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.add_page()
+
+        pdf.set_font("Helvetica", "B", 20)
         pdf.set_text_color(102, 126, 234)
-        pdf.cell(0, 9, f"#{i+1}  {name}", ln=True)
-        pdf.set_font("Helvetica", "", 10)
+        pdf.cell(0, 12, "Resume Screener Report", ln=True, align="C")
+
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(120, 120, 120)
+        pdf.cell(0, 6, f"Generated: {datetime.now().strftime('%B %d, %Y  %H:%M')}", ln=True, align="C")
+        pdf.ln(4)
+
+        pdf.set_font("Helvetica", "B", 11)
         pdf.set_text_color(45, 55, 72)
-        pdf.cell(0, 6, f"Match Score: {pct}%   |   Skill Match: {skill_pct}%   |   {len(matched)} matched  /  {len(missing)} missing", ln=True)
-        pdf.set_font("Helvetica", "B", 9)
-        pdf.set_text_color(21, 87, 36)
-        pdf.cell(0, 6, "Matched Skills:", ln=True)
+        pdf.cell(0, 8, "Job Description (preview)", ln=True)
         pdf.set_font("Helvetica", "", 9)
-        pdf.set_text_color(60, 60, 60)
-        pdf.multi_cell(0, 5, ", ".join(sorted(matched)) if matched else "None")
-        pdf.set_font("Helvetica", "B", 9)
-        pdf.set_text_color(114, 28, 36)
-        pdf.cell(0, 6, "Missing Skills:", ln=True)
-        pdf.set_font("Helvetica", "", 9)
-        pdf.set_text_color(60, 60, 60)
-        pdf.multi_cell(0, 5, ", ".join(sorted(missing)) if missing else "None")
-        pdf.ln(3)
-        pdf.set_draw_color(220, 220, 220)
+        pdf.set_text_color(80, 80, 80)
+        snippet = sanitize(job_description[:300].replace("\n", " "))
+        if len(job_description) > 300:
+            snippet += "..."
+        pdf.multi_cell(0, 5, snippet)
+        pdf.ln(4)
+
+        pdf.set_draw_color(200, 200, 200)
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
         pdf.ln(4)
-    return bytes(pdf.output())
+
+        for i, (name, score, matched, missing, section_scores, boosters, draggers) in enumerate(results):
+            pct       = round(score * 100, 1)
+            skill_pct = round(len(matched) / (len(matched) + len(missing)) * 100, 1) if (matched or missing) else 0
+
+            pdf.set_font("Helvetica", "B", 13)
+            pdf.set_text_color(102, 126, 234)
+            pdf.cell(0, 9, sanitize(f"#{i+1}  {name}"), ln=True)
+
+            pdf.set_font("Helvetica", "", 10)
+            pdf.set_text_color(45, 55, 72)
+            pdf.cell(0, 6,
+                f"Match Score: {pct}%   |   Skill Match: {skill_pct}%   |   "
+                f"{len(matched)} matched  /  {len(missing)} missing",
+                ln=True
+            )
+
+            pdf.set_font("Helvetica", "B", 9)
+            pdf.set_text_color(21, 87, 36)
+            pdf.cell(0, 6, "Matched Skills:", ln=True)
+            pdf.set_font("Helvetica", "", 9)
+            pdf.set_text_color(60, 60, 60)
+            pdf.multi_cell(0, 5, sanitize(", ".join(sorted(matched)) if matched else "None"))
+
+            pdf.set_font("Helvetica", "B", 9)
+            pdf.set_text_color(114, 28, 36)
+            pdf.cell(0, 6, "Missing Skills:", ln=True)
+            pdf.set_font("Helvetica", "", 9)
+            pdf.set_text_color(60, 60, 60)
+            pdf.multi_cell(0, 5, sanitize(", ".join(sorted(missing)) if missing else "None"))
+
+            if section_scores:
+                pdf.set_font("Helvetica", "B", 9)
+                pdf.set_text_color(45, 55, 72)
+                pdf.cell(0, 6, "Section Scores:", ln=True)
+                pdf.set_font("Helvetica", "", 9)
+                pdf.set_text_color(80, 80, 80)
+                sec_line = "   ".join([f"{k.title()}: {v}%" for k, v in section_scores.items()])
+                pdf.multi_cell(0, 5, sanitize(sec_line))
+
+            pdf.ln(3)
+            pdf.set_draw_color(220, 220, 220)
+            pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+            pdf.ln(4)
+
+        return bytes(pdf.output()), None   # success
+
+    except Exception as e:
+        return None, str(e)               # graceful failure
 
 
 # ── SCREENING ──────────────────────────────────────────────────────────
@@ -317,7 +384,7 @@ if screen_btn:
         progress_bar.progress(10)
 
         resumes = {}
-        failed = []
+        failed  = []
         for file in uploaded_files:
             text = extract_text_from_pdf(file)
             if text:
@@ -326,16 +393,16 @@ if screen_btn:
                 failed.append(file.name)
 
         if failed:
-            st.error(f"Could not extract text from: {', '.join(failed)}")
+            st.error(f"⚠️ Could not extract text from: {', '.join(failed)}. The file may be scanned/image-based.")
 
         status.markdown("**⏳ Step 2 of 4 — Analyzing skills with KeyBERT...**")
         progress_bar.progress(35)
 
         if resumes:
-            status.markdown("**⏳ Step 3 of 4 — Ranking candidates with TF-IDF...**")
+            status.markdown("**⏳ Step 3 of 4 — Ranking candidates semantically...**")
             progress_bar.progress(65)
 
-            st.session_state["results"] = rank_resumes(job_description, resumes)
+            st.session_state["results"]         = rank_resumes(job_description, resumes)
             st.session_state["job_description"] = job_description
 
             status.markdown("**✅ Step 4 of 4 — Done! Results ready.**")
@@ -378,7 +445,7 @@ if "results" not in st.session_state or not st.session_state["results"]:
 
 # ── RESULTS ────────────────────────────────────────────────────────────
 elif "results" in st.session_state and st.session_state["results"]:
-    results = st.session_state["results"]
+    results         = st.session_state["results"]
     job_description = st.session_state["job_description"]
 
     top_score = results[0][1] * 100 if results else 0
@@ -401,8 +468,8 @@ elif "results" in st.session_state and st.session_state["results"]:
 
     with dash_col1:
         st.markdown("**🏅 Candidate Score Distribution**")
-        names  = [r[0].replace(".pdf", "") for r in results]
-        scores = [round(r[1] * 100, 1) for r in results]
+        names      = [r[0].replace(".pdf", "") for r in results]
+        scores     = [round(r[1] * 100, 1) for r in results]
         bar_colors = ["#667eea" if i == 0 else "#a0aec0" for i in range(len(names))]
         fig_scores = go.Figure(go.Bar(
             x=names, y=scores, marker_color=bar_colors,
@@ -478,23 +545,43 @@ elif "results" in st.session_state and st.session_state["results"]:
 
     # ── Export ─────────────────────────────────────────────────────────
     st.markdown('<div class="section-header">💾 Export Results</div>', unsafe_allow_html=True)
+
     exp_col1, exp_col2, exp_col3 = st.columns([1, 1, 2])
+
     with exp_col1:
         st.download_button(
             label="⬇️ Download CSV",
             data=build_csv(results),
             file_name=f"resume_screening_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-            mime="text/csv", use_container_width=True,
+            mime="text/csv",
+            use_container_width=True,
         )
+
     with exp_col2:
-        st.download_button(
-            label="⬇️ Download PDF",
-            data=build_pdf(results, job_description),
-            file_name=f"resume_screening_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-            mime="application/pdf", use_container_width=True,
-        )
+        pdf_bytes, pdf_error = build_pdf(results, job_description)
+        if pdf_error:
+            # Graceful failure — friendly message instead of red crash screen
+            st.button(
+                "⚠️ PDF Unavailable",
+                disabled=True,
+                use_container_width=True,
+                help="PDF export failed due to special characters in the resume. Use CSV instead."
+            )
+            st.caption("⚠️ PDF failed — resume contains special characters. Please use CSV export.")
+        else:
+            st.download_button(
+                label="⬇️ Download PDF",
+                data=pdf_bytes,
+                file_name=f"resume_screening_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
+
     with exp_col3:
-        st.caption("📄 **CSV** — full ranked table, open in Excel.\n\n📋 **PDF** — formatted report to share with hiring managers.")
+        st.caption(
+            "📄 **CSV** — full ranked table, open in Excel.\n\n"
+            "📋 **PDF** — formatted report to share with hiring managers."
+        )
 
     # ── Detailed Results ───────────────────────────────────────────────
     st.markdown('<div class="section-header">🏆 Detailed Results</div>', unsafe_allow_html=True)
@@ -536,8 +623,10 @@ elif "results" in st.session_state and st.session_state["results"]:
 
             with st.expander(f"👁 View Full Details — {name}"):
 
+                # ── Score Explanation ──────────────────────────────────
                 if boosters or draggers:
                     st.markdown("**🔍 Why This Resume Scored This Way**")
+                    st.caption("Each keyword from the resume was compared to the JD individually. High = helped. Low = noise.")
                     exp1, exp2 = st.columns(2)
                     with exp1:
                         st.markdown("**🚀 Score Boosters**")
@@ -572,6 +661,7 @@ elif "results" in st.session_state and st.session_state["results"]:
                             """, unsafe_allow_html=True)
                     st.markdown("<br>", unsafe_allow_html=True)
 
+                # ── Section Breakdown ──────────────────────────────────
                 if section_scores:
                     st.markdown("**📊 Section Breakdown**")
                     section_labels = {
@@ -581,8 +671,8 @@ elif "results" in st.session_state and st.session_state["results"]:
                     }
                     for sec, sec_pct in sorted(section_scores.items(), key=lambda x: x[1], reverse=True):
                         label_sec = section_labels.get(sec, sec.title())
-                        bar_w = min(sec_pct, 100)
-                        color = "#667eea" if sec_pct >= 60 else "#f6ad55" if sec_pct >= 35 else "#fc8181"
+                        bar_w     = min(sec_pct, 100)
+                        color     = "#667eea" if sec_pct >= 60 else "#f6ad55" if sec_pct >= 35 else "#fc8181"
                         st.markdown(f"""
                             <div style="margin-bottom:8px">
                                 <div style="display:flex; justify-content:space-between; font-size:0.82rem; color:#4a5568; margin-bottom:3px">
@@ -595,6 +685,7 @@ elif "results" in st.session_state and st.session_state["results"]:
                         """, unsafe_allow_html=True)
                     st.markdown("<br>", unsafe_allow_html=True)
 
+                # ── Matched / Missing Skills ───────────────────────────
                 sc1, sc2 = st.columns(2)
                 with sc1:
                     st.markdown("**✅ Matched Skills**")
