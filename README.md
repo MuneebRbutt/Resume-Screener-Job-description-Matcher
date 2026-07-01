@@ -2,13 +2,20 @@
 
 An intelligent, NLP-powered resume screening tool that ranks candidates against a job description using semantic similarity, skill gap analysis, and section-aware scoring — the same techniques used by real Applicant Tracking Systems (ATS).
 
-> 🚀 **Live Demo:** [your-app.streamlit.app](https://your-app.streamlit.app) ← replace with your link after deploying
+> 🚀 **Live Demo:** https://resume-screener-jd-matcher.streamlit.app/
 
 ---
 
 ## 📸 Screenshots
 
-> *(Add screenshots of your app here after deploying — drag and drop images into this section on GitHub)*
+<img width="951" height="478" alt="image" src="https://github.com/user-attachments/assets/f833fb69-6f4c-494a-9b67-a127c4b8988b" />
+
+<img width="758" height="455" alt="image" src="https://github.com/user-attachments/assets/2b5af3f8-ef21-45a9-b227-8f191f686caa" />
+
+<img width="729" height="431" alt="image" src="https://github.com/user-attachments/assets/de8eeb68-6269-42d3-9aec-e62c1296074b" />
+
+
+
 
 ---
 
@@ -240,7 +247,6 @@ To quickly test the app, use this job description and three sample resumes:
 
 **Muneeb Butt**
 - GitHub: [@MuneebRbutt](https://github.com/MuneebRbutt)
-- LinkedIn: [your LinkedIn URL here]
 
 ---
 
@@ -250,4 +256,4 @@ This project is open source and available under the [MIT License](LICENSE).
 
 ---
 
-*Built with ❤️ using Python, Streamlit, and Sentence Transformers*
+
