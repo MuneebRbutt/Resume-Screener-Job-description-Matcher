@@ -182,7 +182,7 @@ with st.sidebar:
 
     st.markdown("#### 📋 Job Description")
     job_description = st.text_area(
-        label="",
+        label="Job description",
         height=220,
         placeholder="Paste the job description here...",
         label_visibility="collapsed"
@@ -190,7 +190,7 @@ with st.sidebar:
 
     st.markdown("#### 📁 Upload Resumes")
     uploaded_files = st.file_uploader(
-        label="",
+        label="Upload resumes",
         type=["pdf"],
         accept_multiple_files=True,
         label_visibility="collapsed"
