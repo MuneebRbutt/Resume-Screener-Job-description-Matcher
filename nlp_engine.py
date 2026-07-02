@@ -3,6 +3,7 @@ import nltk
 import streamlit as st
 from keybert import KeyBERT
 from sentence_transformers import SentenceTransformer, util
+from models import ResumeResult
 from section_parser import parse_sections, SECTION_WEIGHTS
 
 nltk.download('stopwords', quiet=True)
@@ -129,7 +130,7 @@ def compute_weighted_score(job_description, sections, jd_embedding):
     return final_score, section_scores
 
 
-def rank_resumes(job_description, resumes: dict):
+def rank_resumes(job_description, resumes: dict) -> list[ResumeResult]:
     embedding_model = load_sentence_transformer()
     jd_skills = extract_skills(job_description)
     jd_embedding = embedding_model.encode(job_description, convert_to_tensor=True)
@@ -144,7 +145,17 @@ def rank_resumes(job_description, resumes: dict):
         matched, missing = get_skill_match(jd_skills, raw_text)
         boosters, draggers = explain_score(raw_text, jd_embedding)
 
-        results.append((filename, score, matched, missing, section_scores, boosters, draggers))
+        results.append(
+            ResumeResult(
+                filename=filename,
+                score=score,
+                matched_skills=matched,
+                missing_skills=missing,
+                section_scores=section_scores,
+                boosters=boosters,
+                draggers=draggers,
+            )
+        )
 
-    results.sort(key=lambda x: x[1], reverse=True)
+    results.sort(key=lambda result: result.score, reverse=True)
     return results
